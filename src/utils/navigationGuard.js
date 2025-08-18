@@ -1,21 +1,45 @@
-// Simple event system for navigation guard
+// navigationGuard.js
+let guardFunction = null;
+let pendingNavigation = null;
+
 const navigationGuard = {
-    callback: null,
-    
-    // Set the callback function that will be called before navigation
-    setNavigationGuard(callback) {
-        this.callback = callback;
+    setNavigationGuard: (guard) => {
+        guardFunction = guard;
     },
 
-    // Remove the navigation guard
-    removeNavigationGuard() {
-        this.callback = null;
+    removeNavigationGuard: () => {
+        guardFunction = null;
+        pendingNavigation = null;
     },
 
-    // Check if navigation should be prevented
-    async shouldPreventNavigation() {
-        if (!this.callback) return false;
-        return await this.callback();
+    shouldPreventNavigation: async () => {
+        if (!guardFunction) {
+            return false;
+        }
+
+        return new Promise((resolve) => {
+            // Store the navigation resolve function
+            pendingNavigation = resolve;
+            
+            // Call the guard function and handle the result
+            const result = guardFunction();
+            
+            if (result instanceof Promise) {
+                result.then((shouldProceed) => {
+                    resolve(!shouldProceed); // Return true to prevent, false to allow
+                });
+            } else {
+                resolve(!result); // Return true to prevent, false to allow
+            }
+        });
+    },
+
+    // Method to resolve pending navigation
+    resolvePendingNavigation: (shouldProceed) => {
+        if (pendingNavigation) {
+            pendingNavigation(!shouldProceed); // Return true to prevent, false to allow
+            pendingNavigation = null;
+        }
     }
 };
 

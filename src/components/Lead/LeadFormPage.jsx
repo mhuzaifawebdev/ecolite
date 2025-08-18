@@ -15,25 +15,32 @@ export default function LeadFormPage() {
     const router = useNavigate();
     const { id } = useParams();
     const [field, setFields] = React.useState(leadFormLiterals);
-
     const [leadId, setLeadId] = useState(id || null);
-    // const [isDraftSaved, setIsDraftSaved] = useState(false);
-    // const [sysLogs, setSysLogs] = React.useState([]);
     const formRef = React.useRef(null);
     const [step, setStep] = React.useState(1);
+    const [tabChanges, setTabChanges] = useState({
+        1: false,
+        2: false,
+        3: false
+    });
+    const hasUnsavedChanges = tabChanges[step];
 
     const [files, setFiles] = React.useState([]);
     const [Docs, setDocs] = React.useState([]);
+    const [initialDataLoaded, setInitialDataLoaded] = React.useState(false);
 
     React.useEffect(() => {
         if (id) {
             getJobById(id).then((res) => {
                 setFields(res.data);
-                setFiles(res.data.images);
+                setFiles(res.data.images || []);
                 if (res.data.docs) {
                     setDocs(res.data.docs);
                 }
+                setTimeout(() => setInitialDataLoaded(true), 100);
             });
+        } else {
+            setInitialDataLoaded(true);
         }
     }, [id]);
 
@@ -45,6 +52,8 @@ export default function LeadFormPage() {
         try {
             form.images = files;
             form.docs = Docs;
+
+            setTabChanges({ 1: false, 2: false, 3: false });
 
             if (leadId) {
                 form.id = leadId;
@@ -62,7 +71,7 @@ export default function LeadFormPage() {
                 if (res.status === true) {
                     setLeadId(res.data.id);
                     toast.success(res.message);
-                    setTimeout(( ) => {
+                    setTimeout(() => {
                         router('/csv');
                     }, 2000);
                 } else {
@@ -75,51 +84,127 @@ export default function LeadFormPage() {
         }
     };
 
-    // const debounceTimeout = useRef(null);
+    const handleFormChange = (tabNumber = step) => {
+        setTabChanges(prev => ({ ...prev, [tabNumber]: true }));
+    };
 
-    // Removed the formChange handler since it's not needed without auto-save
+    React.useEffect(() => {
+        if (initialDataLoaded && files && files.length > 0) {
+            handleFormChange(1);
+        }
+    }, [files, initialDataLoaded]);
 
-    // const handleAutoSave = async (formData) => {
-    //     try {
-    //         formData.images = files;
-    //         formData.docs = Docs;
+    React.useEffect(() => {
+        if (initialDataLoaded && Docs && Docs.length > 0) {
+            handleFormChange(2);
+        }
+    }, [Docs, initialDataLoaded]);
 
-    //         let res;
+    const handleSaveCurrentTab = async () => {
+        if (!formRef.current) return;
 
-    //         if (leadId) {
-    //             formData.id = leadId;
-    //             res = await updateJobs(formData);
-    //         } else {
-    //             res = await createJob(formData);
-    //             if (res.status === true) {
-    //                 setLeadId(res.data.id);
-    //                 router(`/edit-lead/${res.data.id}`, {replace: true});
-    //             }
-    //         }
-    //     } catch (error) {
-    //         console.error('Error during auto-save:', error);
-    //     }
-    // };
+        const formData = new FormData(formRef.current);
+        const form = {};
+        for (let [key, value] of formData.entries()) {
+            form[key] = value;
+        }
+
+        try {
+            form.images = files;
+            form.docs = Docs;
+
+            if (leadId) {
+                form.id = leadId;
+                const res = await updateJobs(form);
+                if (res.status === true) {
+                    toast.success("Changes saved successfully");
+                    setTabChanges(prev => ({ ...prev, [step]: false }));
+                } else {
+                    toast.error(res.response.data.message);
+                }
+            } else {
+                const res = await createJob(form);
+                if (res.status === true) {
+                    setLeadId(res.data.id);
+                    toast.success("Changes saved successfully");
+                    setTabChanges(prev => ({ ...prev, [step]: false }));
+                    window.history.replaceState(null, '', `/edit-lead/${res.data.id}`);
+                } else {
+                    toast.error(res.response.data.message);
+                }
+            }
+        } catch (error) {
+            toast.error('Error saving changes');
+            console.error('Error saving changes', error);
+        }
+    };
+
+    const handleContinueWithoutSaving = () => {
+        setTabChanges({ 1: false, 2: false, 3: false });
+    };
 
     return (
         <div className="m-8">
             <ToastContainer />
             <h2 className="text-center text-2xl font-bold">{id ? "Edit" : "Create"} Lead Form</h2>
-            <LeadFormTabs step={step} setStep={setStep} />
-            <form ref={formRef} onSubmit={handleSubmit} className="ml-8">
-                <LeadInformation show={step === 1} field={field} files={files} setFiles={setFiles} />
+            <LeadFormTabs
+                step={step}
+                setStep={setStep}
+                hasUnsavedChanges={hasUnsavedChanges}
+                formRef={formRef}
+                onSaveData={handleSaveCurrentTab}
+                onContinueWithoutSaving={handleContinueWithoutSaving}
+            />
+           <form
+    ref={formRef}
+    onSubmit={handleSubmit}
+    onChange={() => handleFormChange()}
+    className="ml-8"
+>
+    <LeadInformation
+        show={step === 1}
+        field={field}
+        files={files}
+        setFiles={(newFiles) => {
+            setFiles(newFiles);
+            handleFormChange(1);
+        }}
+    />
 
-                <PreQualification show={step === 2} title={'Pre-Qualification'} field={field} Docs={Docs} setDocs={setDocs} />
+    <PreQualification
+        show={step === 2}
+        title={'Pre-Qualification'}
+        field={field}
+        Docs={Docs}
+        setDocs={(newDocs) => {
+            setDocs(newDocs);
+            handleFormChange(2);
+        }}
+        onChange={() => handleFormChange(2)}
+        onSaveTab={handleSaveCurrentTab}
+    />
 
-                <RdSAP show={step === 3} title={'RDSAP'} field={field} />
+    <RdSAP
+        show={step === 3}
+        title={'RDSAP'}
+        field={field}
+        onChange={() => handleFormChange(3)}
+        onSaveTab={handleSaveCurrentTab}
+    />
 
-                <div className="flex justify-end mt-4">
-                    <button type="submit"
-                        className="bg-blue-500 hover:bg-blue-700 text-white font-bold px-4 py-2 mt-8 rounded">
-                        Submit
-                    </button>
-                </div>
-            </form>
+    {/* ✅ Submit button only when step = 1 */}
+    {step === 1 && (
+        <div className="flex justify-end mt-4">
+            <button
+                type="submit"
+                className="bg-blue-500 hover:bg-blue-700 text-white font-bold px-4 py-2 mt-8 rounded"
+            >
+                Submit
+            </button>
+        </div>
+    )}
+</form>
+
         </div>
     );
 }

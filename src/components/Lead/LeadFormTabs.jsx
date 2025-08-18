@@ -7,12 +7,15 @@ LeadFormTabs.propTypes = {
     step: PropTypes.number.isRequired,
     setStep: PropTypes.func.isRequired,
     hasUnsavedChanges: PropTypes.bool,
-    onSaveData: PropTypes.func
+    onSaveData: PropTypes.func,
+    onContinueWithoutSaving: PropTypes.func,
+    formRef: PropTypes.object
 };
 
-export default function LeadFormTabs({ step, setStep, hasUnsavedChanges = true, onSaveData }) {
+export default function LeadFormTabs({ step, setStep, hasUnsavedChanges = false, onSaveData, onContinueWithoutSaving, formRef }) {
     const [showPopup, setShowPopup] = useState(false);
     const [pendingStep, setPendingStep] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     const handleStepChange = (newStep) => {
         if (hasUnsavedChanges && newStep !== step) {
@@ -23,24 +26,50 @@ export default function LeadFormTabs({ step, setStep, hasUnsavedChanges = true, 
         }
     };
 
-    const handleSaveAndContinue = () => {
+    const handleSaveAndContinue = async () => {
         if (onSaveData) {
-            onSaveData();
-        }
-        if (pendingStep) {
-            setStep(pendingStep);
-        }
-        setShowPopup(false);
-        setPendingStep(null);
-        
-        // Allow navigation after saving
-        if (window._navigationResolver) {
-            window._navigationResolver(true);
-            window._navigationResolver = null;
+            setIsSaving(true);
+            try {
+                await onSaveData();
+                // After successful save, proceed to the next step
+                if (pendingStep) {
+                    setStep(pendingStep);
+                }
+                setShowPopup(false);
+                setPendingStep(null);
+                
+                // Allow navigation after saving
+                if (window._navigationResolver) {
+                    window._navigationResolver(true);
+                    window._navigationResolver = null;
+                }
+            } catch (error) {
+                console.error('Error saving data:', error);
+                // Don't proceed if save failed
+            } finally {
+                setIsSaving(false);
+            }
+        } else {
+            // Fallback: if no save function provided, just continue
+            if (pendingStep) {
+                setStep(pendingStep);
+            }
+            setShowPopup(false);
+            setPendingStep(null);
+            
+            if (window._navigationResolver) {
+                window._navigationResolver(true);
+                window._navigationResolver = null;
+            }
         }
     };
 
     const handleContinueWithoutSaving = () => {
+        // Reset unsaved changes state to allow navigation
+        if (onContinueWithoutSaving) {
+            onContinueWithoutSaving();
+        }
+        
         if (pendingStep) {
             setStep(pendingStep);
         }
@@ -79,7 +108,7 @@ export default function LeadFormTabs({ step, setStep, hasUnsavedChanges = true, 
             navigationGuard.setNavigationGuard(() => {
                 setShowPopup(true);
                 return new Promise(resolve => {
-                    // Store the resolve function to be called when user makes a choice
+                    // Store the resolve function globally for access from popup handlers
                     window._navigationResolver = resolve;
                 });
             });
@@ -156,6 +185,7 @@ export default function LeadFormTabs({ step, setStep, hasUnsavedChanges = true, 
                             <button
                                 onClick={handleCancel}
                                 className="text-gray-400 hover:text-gray-600 transition-colors"
+                                disabled={isSaving}
                             >
                                 <X className="w-5 h-5" />
                             </button>
@@ -171,22 +201,25 @@ export default function LeadFormTabs({ step, setStep, hasUnsavedChanges = true, 
                             <div className="flex flex-col space-y-3">
                                 <button
                                     onClick={handleSaveAndContinue}
-                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 transform hover:scale-[1.02] focus:ring-4 focus:ring-blue-200"
+                                    disabled={isSaving}
+                                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 transform hover:scale-[1.02] focus:ring-4 focus:ring-blue-200"
                                 >
                                     <Save className="w-4 h-4" />
-                                    <span>Save & Continue</span>
+                                    <span>{isSaving ? 'Saving...' : 'Save & Continue'}</span>
                                 </button>
                                 
                                 <button
                                     onClick={handleContinueWithoutSaving}
-                                    className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-lg transition-all duration-200 transform hover:scale-[1.02]"
+                                    disabled={isSaving}
+                                    className="w-full bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:cursor-not-allowed text-gray-700 font-medium py-3 px-4 rounded-lg transition-all duration-200 transform hover:scale-[1.02]"
                                 >
                                     Continue Without Saving
                                 </button>
                                 
                                 <button
                                     onClick={handleCancel}
-                                    className="w-full text-gray-500 hover:text-gray-700 font-medium py-2 transition-colors"
+                                    disabled={isSaving}
+                                    className="w-full text-gray-500 hover:text-gray-700 disabled:text-gray-300 disabled:cursor-not-allowed font-medium py-2 transition-colors"
                                 >
                                     Cancel
                                 </button>

@@ -147,7 +147,7 @@ function UserList() {
           };
 
           const response = await axios.put(
-            `${baseUrl}/api/user/updateUser/${selectedUser._id}`,
+            `${baseUrl}/api/user/${selectedUser._id}`,
             updateData,
             {
               headers: {
@@ -554,7 +554,7 @@ function UserList() {
             </div>
           </div>
         </div>
-      )}
+      )}   
     </>
   );
 }

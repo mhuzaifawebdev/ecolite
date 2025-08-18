@@ -1,13 +1,12 @@
 /* eslint-disable no-unused-vars */
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { useNavigate } from "react-router";
-import { MdArrowBackIosNew, MdArrowForwardIos, MdOutlineAddBox } from "react-icons/md";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { MdOutlineAddBox } from "react-icons/md";
 import { IoIosSearch } from "react-icons/io";
 import { fetchJobs } from "../Config/api.js";
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { LeadStatusColors } from "../utils/colors.utils.js";
-import { Link } from "react-router-dom";
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { FaCopy } from "react-icons/fa";
 import { ClipLoader } from "react-spinners";
@@ -19,17 +18,18 @@ const Csv = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation(); // ✅ track URL changes
 
-  // Get URL parameters once and memoize them
+  // Parse URL params every time location.search changes
   const urlParams = useMemo(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     return {
       status: params.get('status'),
       dataMatch: params.get('dataMatchStatus'),
       eprStatus: params.get('eprStatus'),
       installStatus: params.get('installStatus')
     };
-  }, []);
+  }, [location.search]); // ✅ recalc when ?query changes
 
   const { status, dataMatch, eprStatus, installStatus } = urlParams;
 
@@ -39,9 +39,7 @@ const Csv = () => {
   const searchTimeoutRef = useRef(null);
   const abortControllerRef = useRef(null);
 
-  // Memoized fetch function - REMOVED from useEffect dependencies
   const jobsFetching = useCallback(async (page = 1, search = searchQuery, immediate = false) => {
-    // Create cache key to prevent duplicate requests
     const cacheKey = JSON.stringify({
       search,
       status,
@@ -51,17 +49,14 @@ const Csv = () => {
       page
     });
 
-    // Prevent duplicate requests
     if (cacheKey === lastFetchParamsRef.current && loading) {
       return;
     }
 
-    // Cancel previous request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
 
-    // Clear existing timeout for debouncing
     if (fetchTimeoutRef.current) {
       clearTimeout(fetchTimeoutRef.current);
     }
@@ -70,8 +65,6 @@ const Csv = () => {
       try {
         setLoading(true);
         lastFetchParamsRef.current = cacheKey;
-
-        // Create new abort controller
         abortControllerRef.current = new AbortController();
 
         const queryParams = {
@@ -87,10 +80,7 @@ const Csv = () => {
 
         const response = await fetchJobs(queryParams);
 
-        // Check if request was aborted
-        if (abortControllerRef.current?.signal.aborted) {
-          return;
-        }
+        if (abortControllerRef.current?.signal.aborted) return;
 
         if (response?.jobs) {
           setRows(response.jobs);
@@ -115,62 +105,47 @@ const Csv = () => {
     if (immediate) {
       await fetchData();
     } else {
-      // Debounce for 300ms
       fetchTimeoutRef.current = setTimeout(fetchData, 300);
     }
-  }, [status, dataMatch, eprStatus, installStatus, loading]); // Removed searchQuery from dependencies
+  }, [status, dataMatch, eprStatus, installStatus, loading, searchQuery]);
 
-  // Debounced search handler
   const handleSearchChange = useCallback((e) => {
     const value = e.target.value;
     setSearchQuery(value);
 
-    // Clear existing search timeout
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
 
-    // Debounce search for 500ms
     searchTimeoutRef.current = setTimeout(() => {
-      setCurrentPage(1); // Reset to first page for new search
+      setCurrentPage(1);
       jobsFetching(1, value, false);
     }, 500);
   }, [jobsFetching]);
 
-  // Optimized pagination handlers
   const handlePageChange = useCallback((newPage) => {
     if (newPage === currentPage || newPage < 1 || newPage > totalPages) {
       return;
     }
-    
     setCurrentPage(newPage);
-    jobsFetching(newPage, searchQuery, true); // Immediate for pagination
+    jobsFetching(newPage, searchQuery, true);
   }, [currentPage, totalPages, searchQuery, jobsFetching]);
 
-  // Initial data fetch - FIXED: No function in dependency array
+  // ✅ Refetch whenever filters (URL params) change
   useEffect(() => {
-    jobsFetching(1, '', true); // Load initial data immediately
-  }, `[status, eprStatus, installStatus, dataMatch]`); // Only URL params as dependencies
+    jobsFetching(1, '', true);
+  }, [status, eprStatus, installStatus, dataMatch]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (fetchTimeoutRef.current) {
-        clearTimeout(fetchTimeoutRef.current);
-      }
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
     };
   }, []);
 
-  // Memoized status column to prevent unnecessary re-renders
   const getStatusColumn = useCallback((row) => {
     let statusValue, colorValue;
-
     if (status) {
       statusValue = row.status;
       colorValue = LeadStatusColors(row.status);
@@ -195,17 +170,15 @@ const Csv = () => {
     );
   }, [status, eprStatus, installStatus, dataMatch]);
 
-  // Memoized table headers
   const tableHeaders = useMemo(() => {
-    const statusHeader = status ? "Lead Status" : 
-                        eprStatus ? "EPR Status" : 
-                        installStatus ? "Install Status" : 
-                        dataMatch ? "Data Match Status" : "Status";
+    const statusHeader = status ? "Lead Status" :
+      eprStatus ? "EPR Status" :
+      installStatus ? "Install Status" :
+      dataMatch ? "Data Match Status" : "Status";
 
     return ["ID #", "Name", "Postal Code", "Address", "Lead Source", "Created At", "Benefits", statusHeader];
   }, [status, eprStatus, installStatus, dataMatch]);
 
-  // Memoized pagination buttons to prevent excessive re-renders
   const paginationButtons = useMemo(() => {
     return [...Array(totalPages).keys()].map((page) => (
       <button
@@ -252,7 +225,7 @@ const Csv = () => {
           </button>
         </div>
       </div>
-      
+
       <div className="relative overflow-x-scroll shadow-md rounded-lg">
         {loading && rows.length === 0 ? (
           <div className="flex justify-center items-center h-64">
