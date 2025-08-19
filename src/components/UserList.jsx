@@ -6,6 +6,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { MdArrowBackIosNew, MdArrowForwardIos } from "react-icons/md";
 import { LiaUserEditSolid } from "react-icons/lia";
 import { IoCloseOutline } from "react-icons/io5";
+import { FaTrashAlt } from "react-icons/fa";
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import axios from "axios";
@@ -17,13 +18,19 @@ const validationSchema = Yup.object({
   email: Yup.string()
     .email("Invalid email address")
     .required("Email is required"),
-  password: Yup.string().required("Password is required"),
+  password: Yup.string().when('isUpdate', {
+    is: false,
+    then: () => Yup.string().required("Password is required"),
+    otherwise: () => Yup.string()
+  }),
   role: Yup.string().required("Role is required"),
 });
 
 function UserList() {
   const [users, setUsers] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -32,15 +39,24 @@ function UserList() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const navigate = useNavigate();
 
+  // Helper function to get authorization token
+  const getAuthToken = () => {
+    // Try different possible token keys in localStorage
+    return localStorage.getItem("authorizationToken") || 
+           localStorage.getItem("token") || 
+           JSON.parse(localStorage.getItem("user") || '{}')?.accessToken || '';
+  };
+
   // Optimized fetch function with better error handling
   const fetchUserData = useCallback(async (page = currentPage) => {
-    const authorizationToken = localStorage.getItem("authorizationToken");
+    const authToken = getAuthToken();
     
-    if (!authorizationToken) {
-      setError("No authorization token found");
+    if (!authToken) {
+      setError("No authorization token found. Please login again.");
       return;
     }
 
@@ -53,13 +69,16 @@ function UserList() {
         {
           method: "GET",
           headers: {
-            "Authorization": authorizationToken,
+            "Authorization": authToken, // Fixed: Use consistent header name
             "Content-Type": "application/json",
           },
         }
       );
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Unauthorized. Please login again.");
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -69,7 +88,6 @@ function UserList() {
       if (result && result.data && Array.isArray(result.data)) {
         setUsers(result.data);
         setTotalPages(result.numOfPages || 1);
-        // Update localStorage with fresh data
         localStorage.setItem("users", JSON.stringify(result.data));
         setError(null);
       } else {
@@ -80,7 +98,6 @@ function UserList() {
       console.error("Fetch error: ", error);
       setError(error.message);
       
-      // Only use localStorage as fallback if we have no current data
       if (users.length === 0) {
         const localStorageData = localStorage.getItem("users");
         if (localStorageData) {
@@ -129,6 +146,7 @@ function UserList() {
       password: "",
       role: "ADMIN",
       showPassword: false,
+      isUpdate: false
     },
     validationSchema,
     enableReinitialize: true,
@@ -137,22 +155,32 @@ function UserList() {
       setErrorMSG("");
 
       try {
+        const authToken = getAuthToken();
+        
+        if (!authToken) {
+          setErrorMSG("No authorization token found. Please login again.");
+          return;
+        }
+
         if (selectedUser) {
-          // Update existing user
-          const updateData = {
-            name: values.username,
-            email: values.email,
-            role: values.role,
-            ...(values.password && { password: values.password }),
-          };
+          // Update existing user - Fixed: Use proper form data format
+          const formData = new FormData();
+          formData.append("name", values.username);
+          formData.append("email", values.email);
+          formData.append("role", values.role);
+          
+          // Only include password if it's provided
+          if (values.password && values.password.trim()) {
+            formData.append("password", values.password);
+          }
 
           const response = await axios.put(
-            `${baseUrl}/api/user/${selectedUser._id}`,
-            updateData,
+            `${baseUrl}/api/user/${selectedUser.id}`,
+            formData, // Fixed: Use FormData instead of JSON
             {
               headers: {
-                "Authorization": localStorage.getItem("authorizationToken"),
-                "Content-Type": "application/json",
+                "Authorization": authToken, // Fixed: Use consistent header
+                // Don't set Content-Type, let axios set it for FormData
               },
             }
           );
@@ -160,7 +188,6 @@ function UserList() {
           if (response.data.status) {
             toast.success("User updated successfully");
             handleModalClose();
-            // Refresh data without changing page
             await fetchUserData(currentPage);
           } else {
             setErrorMSG(response.data.message || "Failed to update user");
@@ -178,7 +205,7 @@ function UserList() {
             formData,
             {
               headers: {
-                "Authorization": localStorage.getItem("authorizationToken"),
+                "Authorization": authToken, // Fixed: Use consistent header
               },
             }
           );
@@ -186,7 +213,6 @@ function UserList() {
           if (response.data.status) {
             toast.success("User created successfully");
             handleModalClose();
-            // Refresh data and possibly go to first page to see new user
             setCurrentPage(1);
             await fetchUserData(1);
           } else {
@@ -204,6 +230,56 @@ function UserList() {
     },
   });
 
+  // Delete user function
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    setDeleting(true);
+    try {
+      const authToken = getAuthToken();
+      
+      if (!authToken) {
+        toast.error("No authorization token found. Please login again.");
+        return;
+      }
+
+      const response = await axios.delete(
+        `${baseUrl}/api/user/${userToDelete.id}`,
+        {
+          headers: {
+            "Authorization": authToken,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.data.status) {
+        toast.success(response.data.message || "User deleted successfully");
+        setDeleteModalOpen(false);
+        setUserToDelete(null);
+        
+        // Refresh data and adjust pagination if needed
+        const newTotalUsers = users.length - 1;
+        const newTotalPages = Math.ceil(newTotalUsers / 7);
+        
+        if (currentPage > newTotalPages && newTotalPages > 0) {
+          setCurrentPage(newTotalPages);
+          await fetchUserData(newTotalPages);
+        } else {
+          await fetchUserData(currentPage);
+        }
+      } else {
+        toast.error(response.data.message || "Failed to delete user");
+      }
+    } catch (error) {
+      console.error("Delete error:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Failed to delete user";
+      toast.error(errorMessage);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleEditClick = useCallback((user) => {
     setSelectedUser(user);
     formik.setValues({
@@ -212,9 +288,10 @@ function UserList() {
       password: "", // Don't pre-fill password for security
       role: user.role || "ADMIN",
       showPassword: false,
+      isUpdate: true // Flag to indicate this is an update
     });
     setIsOpen(true);
-    setErrorMSG(""); // Clear any previous errors
+    setErrorMSG("");
   }, [formik]);
 
   const handleModalClose = useCallback(() => {
@@ -227,9 +304,26 @@ function UserList() {
   const handleAddNewUser = useCallback(() => {
     setSelectedUser(null);
     setErrorMSG("");
-    formik.resetForm();
+    formik.setValues({
+      username: "",
+      email: "",
+      password: "",
+      role: "ADMIN",
+      showPassword: false,
+      isUpdate: false
+    });
     setIsOpen(true);
   }, [formik]);
+
+  const handleDeleteClick = useCallback((user) => {
+    setUserToDelete(user);
+    setDeleteModalOpen(true);
+  }, []);
+
+  const handleDeleteModalClose = useCallback(() => {
+    setDeleteModalOpen(false);
+    setUserToDelete(null);
+  }, []);
 
   // Manual refresh function
   const handleRefresh = useCallback(() => {
@@ -299,7 +393,7 @@ function UserList() {
                   Role
                 </th>
                 <th scope="col" className="px-6 py-5">
-                  Action
+                  Actions
                 </th>
               </tr>
             </thead>
@@ -315,7 +409,7 @@ function UserList() {
               ) : (
                 filteredUsers.map((user) => (
                   <tr
-                    key={user._id}
+                    key={user.id}
                     className="bg-white border-b hover:bg-gray-50 transition-colors"
                   >
                     <th
@@ -334,14 +428,23 @@ function UserList() {
                         {user.role}
                       </span>
                     </td>
-                    <td className="px-6 py-4 flex justify-center items-center">
-                      <button
-                        onClick={() => handleEditClick(user)}
-                        className="font-medium hover:scale-110 transition-transform"
-                        title="Edit user"
-                      >
-                        <LiaUserEditSolid className="w-6 h-6 text-buttonsBg" />
-                      </button>
+                    <td className="px-6 py-4">
+                      <div className="flex justify-center items-center gap-3">
+                        <button
+                          onClick={() => handleEditClick(user)}
+                          className="font-medium hover:scale-110 transition-transform"
+                          title="Edit user"
+                        >
+                          <LiaUserEditSolid className="w-6 h-6 text-buttonsBg" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(user)}
+                          className="font-medium hover:scale-110 transition-transform"
+                          title="Delete user"
+                        >
+                          <FaTrashAlt className="w-5 h-5 text-red-600" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -384,7 +487,7 @@ function UserList() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Edit/Create Modal */}
       {isOpen && (
         <div
           id="modal"
@@ -471,7 +574,7 @@ function UserList() {
                       value={formik.values.password}
                       onChange={formik.handleChange}
                       onBlur={formik.handleBlur}
-                      required={!selectedUser} // Only required for new users
+                      required={!selectedUser}
                       placeholder="Password"
                       disabled={submitting}
                       className={`${
@@ -551,6 +654,62 @@ function UserList() {
                   }
                 </button>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModalOpen && (
+        <div
+          className="fixed top-0 left-0 right-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%)] max-h-full flex justify-center items-center bg-[#04040480]"
+        >
+          <div className="flex w-full items-center my-5 justify-center mx-auto px-5 container">
+            <div className="bg-white p-8 rounded-[22px] shadow-md w-full max-w-md">
+              <div className="flex relative flex-col gap-5 mb-4 items-center justify-center">
+                <div className="w-full cursor-pointer absolute top-0 justify-end flex inset-0">
+                  <IoCloseOutline
+                    onClick={handleDeleteModalClose}
+                    className="h-7 hover:text-[blue] w-7"
+                  />
+                </div>
+                <h2 className="text-xl font-bold text-center text-red-600">
+                  Delete User
+                </h2>
+              </div>
+              
+              <div className="text-center mb-6">
+                <p className="text-gray-700 mb-2">
+                  Are you sure you want to delete this user?
+                </p>
+                <div className="bg-red-50 p-3 rounded-lg">
+                  <p className="font-semibold text-red-800">{userToDelete?.name}</p>
+                  <p className="text-red-600 text-sm">{userToDelete?.email}</p>
+                </div>
+                <p className="text-red-600 text-sm mt-2">
+                  This action cannot be undone.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleDeleteModalClose}
+                  disabled={deleting}
+                  className="flex-1 bg-gray-300 text-gray-700 py-3 rounded-full hover:bg-gray-400 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteUser}
+                  disabled={deleting}
+                  className="flex-1 bg-red-600 text-white py-3 rounded-full hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {deleting && (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  )}
+                  {deleting ? "Deleting..." : "Delete User"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

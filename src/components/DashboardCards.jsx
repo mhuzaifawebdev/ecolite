@@ -169,7 +169,7 @@ const DashboardCards = () => {
                 <div className="h-1 bg-white bg-opacity-30 rounded-full">
                   <div 
                     className="h-1 bg-white rounded-full" 
-                    style={{ width: `${(card.value / 10) * 100}%` }} 
+                    style={{ width: `${(card.value / 15) * 100}%` }} 
                   ></div>
                 </div>
                 <p className="text-xs text-white opacity-80 mt-1 text-right">
