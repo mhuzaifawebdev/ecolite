@@ -208,8 +208,8 @@ const Sidebar = ({ isSidebarCompress, setIsSidebarCompress }) => {
         className={`z-50 bg-primary flex flex-col justify-between min-h-screen h-full top-0 left-0 
           transition-all duration-300 overflow-hidden 
           ${isMobile ? 
-            `fixed w-64 transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}` : 
-            isSidebarCompress ? "w-64" : "w-64" // Always use the same width for desktop
+            `fixed w-64 transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}` : "fixed w-64"
+           
           }`
         }
       >

@@ -148,7 +148,12 @@ const Layout = ({ children }) => {
             !isSidebarCompress ? "hidden" : "md:hidden z-[45] block fixed left-0 top-0 h-full w-full"
           }`}
         ></div>
-        <div className="w-[calc(100%-80px)] p-2 flex flex-col flex-1  min-h-screen h-max ">
+        <div
+              className={`p-2 flex flex-col flex-1 min-h-screen h-max transition-all duration-300
+                ${width >= 1280 ? (isSidebarCompress ? "ml-64" : "ml-64") : "ml-0"}
+              `}
+        >
+
            <div className="w-full flex sm:hidden items-center justify-end">
            <button className="max-w-max " onClick={toggleSidebar}><TbMenu2 className='w-7 h-7 mt-2 ' /></button>
             </div>   
