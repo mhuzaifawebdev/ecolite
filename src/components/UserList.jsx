@@ -435,14 +435,14 @@ function UserList() {
                           className="font-medium hover:scale-110 transition-transform"
                           title="Edit user"
                         >
-                          <LiaUserEditSolid className="w-6 h-6 text-buttonsBg" />
+                          <LiaUserEditSolid className="w-6 h-6 text-green-600" />
                         </button>
                         <button
                           onClick={() => handleDeleteClick(user)}
                           className="font-medium hover:scale-110 transition-transform"
                           title="Delete user"
                         >
-                          <FaTrashAlt className="w-5 h-5 text-red-600" />
+                          <FaTrashAlt className="w-4 h-4 text-red-600" />
                         </button>
                       </div>
                     </td>

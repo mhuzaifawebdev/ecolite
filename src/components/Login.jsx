@@ -86,9 +86,11 @@ function Login() {
       >
         {" "}
         <img
-          src="/image/ecolite-logo-removebg.png"
+          src="/image/ecolite-logo.png"
           alt=""
-          className="w-60 text-blue-900"
+          className="w-100 text-blue-900"
+          width={500}
+          height={500}
         />
       </div>
       <div className="flex w-full  justify-center items-center">
