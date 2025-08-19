@@ -146,16 +146,17 @@ export default function LeadInformation({field = {}, files, setFiles, show}) {
                           }}
                         />
 {/*  */}
-                    {((field?.leadSource === 'Install Booked' || field?.leadSource === 'Install Pending' || field?.leadSource === 'Install Incomplete' || field?.leadSource === 'Install Completed' || isOtherInstall) && isOtherInstall !== '') &&
-                      <FormField
-                        label='Install Date'
-                        name='installDate'
-                        type='Date'
-                        placeholder='Enter Install Date'
-                        defaultValue={field?.installDate}
-                        required={true}
-                      />
-                    }
+            {((field?.installStatus && ['Install Booked', 'Install Pending', 'Install Incomplete', 'Install Completed'].includes(field?.installStatus)) || isOtherInstall) && (
+                <FormField
+                    label='Install Date'
+                    name='installDate'
+                    type='date'
+                    placeholder='Enter Install Date'
+                    defaultValue={field?.installDate}
+                    required={true}
+                />
+                )}
+
                                   {/*  */}
                     <h2 className="col-span-full text-xl font-bold">Post Call Status</h2>
                     <FormDropdown label='After Call Status' name='afterCallStatus' type='text'
