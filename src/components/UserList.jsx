@@ -438,7 +438,7 @@ function UserList() {
                           <LiaUserEditSolid className="w-6 h-6 text-green-600" />
                         </button>
                         <button
-                          onClick={() => handleDeleteClick(user)}
+                          onClick={() => handleDeleteClick(user)} 
                           className="font-medium hover:scale-110 transition-transform"
                           title="Delete user"
                         >
